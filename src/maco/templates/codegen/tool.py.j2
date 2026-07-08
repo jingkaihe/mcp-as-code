@@ -9,11 +9,6 @@ from pydantic import BaseModel, ConfigDict, Field
 from {{ client_module }} import call_mcp_tool
 
 
-SERVER_NAME = {{ server_name | pyrepr }}
-TOOL_NAME = {{ tool_name | pyrepr }}
-DESCRIPTION = {{ description | pyrepr }}
-
-
 {{ input_type_source }}
 
 
@@ -23,4 +18,4 @@ DESCRIPTION = {{ description | pyrepr }}
 async def {{ func_name }}(arguments: {{ input_type_expr }}{{ input_default_suffix }}) -> {{ output_type_expr }}:
     """{{ docstring }}"""
 
-    return await call_mcp_tool(SERVER_NAME, TOOL_NAME, {{ input_type_expr }}, {{ output_type_expr }}, arguments)
+    return await call_mcp_tool({{ server_name | pyrepr }}, {{ tool_name | pyrepr }}, {{ input_type_expr }}, {{ output_type_expr }}, arguments)

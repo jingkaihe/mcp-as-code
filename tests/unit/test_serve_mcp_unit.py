@@ -13,6 +13,7 @@ from maco.sandbox import GatewayInfo, SandboxContext, SandboxExec, SandboxRunRes
 import maco.serve_mcp as serve_mcp_module
 from maco.serve_mcp import (
     _bash_description,
+    _clean_local_sdk,
     _code_execute_description,
     _content_addressed_script_filename,
     _default_gateway_host,
@@ -45,6 +46,25 @@ def test_default_scratch_path_lives_under_workspace(tmp_path):
     workspace = tmp_path / ".maco"
 
     assert default_scratch_path(workspace) == workspace / "scratch"
+
+
+def test_clean_local_sdk_removes_only_generated_sdk_artifacts(tmp_path):
+    workspace = tmp_path / ".maco"
+    (workspace / "tools" / "stale_server").mkdir(parents=True)
+    (workspace / "tools" / "stale_server" / "stale.py").write_text("", encoding="utf-8")
+    (workspace / "manifest.json").write_text("{}", encoding="utf-8")
+    (workspace / "pyproject.toml").write_text("[project]\nname = 'stale'\n", encoding="utf-8")
+    (workspace / "gateway.json").write_text("{}", encoding="utf-8")
+    (workspace / "scratch").mkdir()
+    (workspace / "scratch" / "task.py").write_text("print('keep')\n", encoding="utf-8")
+
+    _clean_local_sdk(workspace)
+
+    assert not (workspace / "tools").exists()
+    assert not (workspace / "manifest.json").exists()
+    assert not (workspace / "pyproject.toml").exists()
+    assert (workspace / "gateway.json").exists()
+    assert (workspace / "scratch" / "task.py").exists()
 
 
 def test_serve_mcp_code_execute_omitted_filename_uses_deterministic_path(tmp_path):

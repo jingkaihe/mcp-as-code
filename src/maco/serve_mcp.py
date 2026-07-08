@@ -185,7 +185,7 @@ def serve_mcp(options: ServeMcpOptions) -> None:
         tools_by_server = fetch_gateway_tools(gateway.url, token=gateway.token)
         modules = sorted(server_module_names(tools_by_server.keys()).values())
         if normalized_provider == "local":
-            _clean_local_sdk(workspace, clean=options.clean)
+            _clean_local_sdk(workspace)
             stats = generate_sandbox_sdk(tools_by_server, workspace=workspace, clean=False)
             print(_LOCAL_SDK_GENERATED_TEMPLATE.render(stats=stats).strip())
         context = SandboxContext(
@@ -389,9 +389,7 @@ def _guest_tools_root(provider: SandboxProvider) -> str:
     return f"{provider.guest_workspace.rstrip('/')}/tools"
 
 
-def _clean_local_sdk(workspace: Path, *, clean: bool) -> None:
-    if not clean:
-        return
+def _clean_local_sdk(workspace: Path) -> None:
     for path in [workspace / "tools", workspace / "manifest.json", workspace / "pyproject.toml"]:
         if path.is_dir():
             import shutil

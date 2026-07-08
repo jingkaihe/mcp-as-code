@@ -36,7 +36,10 @@ def test_generate_sandbox_sdk_uses_tools_package_layout(tmp_path):
     tool_source = (tmp_path / "tools" / "echo_server" / "echo.py").read_text(encoding="utf-8")
     assert "from tools._client import call_mcp_tool" in tool_source
     assert "async def echo(arguments: EchoInput) -> EchoOutput:" in tool_source
-    assert "return await call_mcp_tool(SERVER_NAME, TOOL_NAME, EchoInput, EchoOutput, arguments)" in tool_source
+    assert "DESCRIPTION =" not in tool_source
+    assert "SERVER_NAME =" not in tool_source
+    assert "TOOL_NAME =" not in tool_source
+    assert "return await call_mcp_tool('echo-server', 'echo', EchoInput, EchoOutput, arguments)" in tool_source
     init_source = (tmp_path / "tools" / "echo_server" / "__init__.py").read_text(encoding="utf-8")
     assert "from .echo import echo, EchoInput, EchoOutput" in init_source
     manifest = (tmp_path / "manifest.json").read_text(encoding="utf-8")
@@ -63,7 +66,7 @@ def test_generate_sandbox_sdk_uses_optional_empty_input_and_public_typed_helper(
 
     tool_source = (tmp_path / "tools" / "utility" / "ping.py").read_text(encoding="utf-8")
     assert "async def ping(arguments: PingInput | None = None) -> PingOutput:" in tool_source
-    assert "return await call_mcp_tool(SERVER_NAME, TOOL_NAME, PingInput, PingOutput, arguments)" in tool_source
+    assert "return await call_mcp_tool('utility', 'ping', PingInput, PingOutput, arguments)" in tool_source
 
     client_source = (tmp_path / "tools" / "_client.py").read_text(encoding="utf-8")
     assert "async def _call_mcp_tool(" in client_source
