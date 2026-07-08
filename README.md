@@ -29,26 +29,30 @@ tools
 **Programmatic leverage:** the agent is given a real programming language, Python, allowing it to orchestrate complex control flows with exceptional context-efficiency using loops, conditions, and state management.
 
 ```python
+import asyncio
 from collections import Counter
-from tools.github import listCommits
+from tools.github import ListCommitsInput, list_commits
 
-owner, repo, page, counts = "openclaw", "openclaw", 1, Counter()
+async def main():
+    owner, repo, page, counts = "openclaw", "openclaw", 1, Counter()
 
-while True:
-    commits = listCommits(owner=owner, repo=repo, perPage=100, page=page)
-    for commit in commits:
-        login = (commit.get("author") or {}).get("login")
-        if login and "bot" not in login.lower():
-            counts[login] += 1
-    if len(commits) < 100 or page >= 20:
-        break
-    page += 1
+    while True:
+        commits = await list_commits(ListCommitsInput(owner=owner, repo=repo, per_page=100, page=page))
+        for commit in commits:
+            login = (commit.get("author") or {}).get("login")
+            if login and "bot" not in login.lower():
+                counts[login] += 1
+        if len(commits) < 100 or page >= 20:
+            break
+        page += 1
 
-total = sum(counts.values())
-for login, count in counts.most_common():
-    if count / total < 0.01:
-        break
-    print(f"@{login}: {count} commits ({count / total:.1%})")
+    total = sum(counts.values())
+    for login, count in counts.most_common():
+        if count / total < 0.01:
+            break
+        print(f"@{login}: {count} commits ({count / total:.1%})")
+
+asyncio.run(main())
 ```
 
 The example above illustrates the MCP code that will be executed to find the top contributors to an open-source repository.

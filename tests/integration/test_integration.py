@@ -34,12 +34,18 @@ def test_serve_generates_wrappers_and_run_end_to_end(tmp_path):
     script = tmp_path / "use_tools.py"
     script.write_text(
         """
-from maco_generated.servers.echoServer import add, echo
+import asyncio
+from maco_generated.servers.echo_server import AddInput, EchoInput, add, echo
 
-message = echo(message="hello from code")
-sum_result = add(a=2, b=5)
-print(message.result)
-print(sum_result.result)
+async def main():
+    message, sum_result = await asyncio.gather(
+        echo(EchoInput(message="hello from code")),
+        add(AddInput(a=2, b=5)),
+    )
+    print(message.result)
+    print(sum_result.result)
+
+asyncio.run(main())
 """.strip()
         + "\n"
     )

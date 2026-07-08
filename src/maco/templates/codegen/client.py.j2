@@ -6,15 +6,16 @@ import json
 import os
 from pathlib import Path
 from typing import Any
-from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
+
+import httpx
+from pydantic import BaseModel, TypeAdapter
 
 
 _CURRENT_DIR = Path(__file__).resolve().parent
 _WORKSPACE_DIR = _CURRENT_DIR.parent
 
 
-def call_mcp_tool(
+async def _call_mcp_tool(
     server_name: str,
     tool_name: str,
     arguments: dict[str, Any] | None = None,
@@ -48,14 +49,16 @@ def call_mcp_tool(
     if token:
         headers["Authorization"] = f"Bearer {token}"
 
-    request = Request(url, data=payload, headers=headers, method="POST")
     try:
-        with urlopen(request, timeout=timeout) as response:
-            raw = response.read().decode("utf-8")
-    except HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"MCP tool {server_name}.{tool_name} failed: HTTP {exc.code}: {detail}") from exc
-    except URLError as exc:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.post(url, content=payload, headers=headers)
+            raw = response.text
+            response.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        raise RuntimeError(
+            f"MCP tool {server_name}.{tool_name} failed: HTTP {exc.response.status_code}: {exc.response.text}"
+        ) from exc
+    except httpx.RequestError as exc:
         raise RuntimeError(f"failed to connect to maco gateway at {url}: {exc}") from exc
 
     result = json.loads(raw)
@@ -101,3 +104,27 @@ def _content_text(result: dict[str, Any]) -> str:
         else:
             parts.append(str(block))
     return "".join(parts)
+
+
+async def call_mcp_tool(
+    server_name: str,
+    tool_name: str,
+    input_type: Any,
+    output_type: Any,
+    arguments: Any = None,
+) -> Any:
+    """Validate typed MCP arguments, call the tool, and validate the result."""
+
+    validated_input = TypeAdapter(input_type).validate_python({} if arguments is None else arguments)
+    result = await _call_mcp_tool(server_name, tool_name, _mcp_arguments(validated_input))
+    return TypeAdapter(output_type).validate_python(result)
+
+
+def _mcp_arguments(value: Any) -> dict[str, Any]:
+    if value is None:
+        return {}
+    if isinstance(value, BaseModel):
+        return value.model_dump(by_alias=True, exclude_none=True)
+    if isinstance(value, dict):
+        return value
+    raise TypeError(f"MCP tool arguments must validate to an object, got {type(value).__name__}")

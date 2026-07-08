@@ -1,7 +1,13 @@
 Run shell and Python code in a sandbox with generated maco tools.
 
 Generated MCP tools are importable as:
-  from tools.<server> import <tool>
+  import asyncio
+  from tools.<server> import <ToolInput>, <tool>
+  async def main():
+      result = await <tool>(<ToolInput>(<fields>))
+  asyncio.run(main())
+
+Independent calls can run in parallel with asyncio.gather(call_a, call_b).
 
 {% include "server_catalog.j2" %}
 

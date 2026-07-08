@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import typing as _t
 
-from pydantic import BaseModel, ConfigDict, Field, RootModel
+from pydantic import BaseModel, ConfigDict, Field
 
 from {{ client_module }} import call_mcp_tool
 
@@ -20,19 +20,7 @@ DESCRIPTION = {{ description | pyrepr }}
 {{ output_type_source }}
 
 
-def {{ func_name }}(arguments: {{ input_type_expr }} | dict[str, _t.Any] | None = None, **kwargs: _t.Any) -> {{ output_type_expr }}:
+async def {{ func_name }}(arguments: {{ input_type_expr }}{{ input_default_suffix }}) -> {{ output_type_expr }}:
     """{{ docstring }}"""
 
-    payload: dict[str, _t.Any] = {}
-    if arguments is not None:
-        if isinstance(arguments, BaseModel):
-            payload.update(arguments.model_dump(by_alias=True, exclude_none=True))
-        else:
-            payload.update(arguments)
-    payload.update(kwargs)
-{% if input_is_model %}
-    validated_input = {{ input_type_expr }}.model_validate(payload)
-    payload = validated_input.model_dump(by_alias=True, exclude_none=True)
-{% endif %}
-    result = call_mcp_tool(SERVER_NAME, TOOL_NAME, payload)
-    return {{ return_expr }}
+    return await call_mcp_tool(SERVER_NAME, TOOL_NAME, {{ input_type_expr }}, {{ output_type_expr }}, arguments)

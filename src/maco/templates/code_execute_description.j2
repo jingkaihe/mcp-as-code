@@ -3,7 +3,14 @@ Run Python code in the sandbox. Use this for multi-step MCP work, loops, filteri
 For most tasks, pass only the code argument. If filename is omitted, maco writes the code to a deterministic content-addressed path like <hash>.py under the writable scratch directory. Use filename only when a readable traceback path or stable named script matters. Use args only when the script explicitly reads command-line arguments.
 
 Import generated tools with:
-  from tools.<server> import <tool>
+  import asyncio
+  from tools.<server> import <ToolInput>, <tool>
+  async def main():
+      result = await <tool>(<ToolInput>(<fields>))
+  asyncio.run(main())
+
+Independent tool calls can run concurrently:
+  result_a, result_b = await asyncio.gather(tool_a(input_a), tool_b(input_b))
 
 {% include "server_catalog.j2" %}
 

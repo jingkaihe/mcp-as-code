@@ -1,5 +1,5 @@
 class {{ class_name }}(BaseModel):
-    model_config = ConfigDict(populate_by_name=True, extra='allow')
+    model_config = ConfigDict(populate_by_name=True, extra={{ extra_behavior | pyrepr }})
 
 {% for field in fields %}
     {{ field.name }}: {{ field.type_expr }} = {{ field.field_args }}

@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-from collections import Counter
 from dataclasses import dataclass
+import hashlib
 import json
 import keyword
 from pathlib import Path
@@ -16,6 +16,7 @@ from urllib.request import Request, urlopen
 
 from jinja2 import Environment, PackageLoader, StrictUndefined
 
+from . import __version__
 from .config import MacoConfig
 from .mcp_manager import MCPManager
 
@@ -36,6 +37,38 @@ def _pyrepr(value: Any) -> str:
 _CODEGEN_TEMPLATES.filters["pyrepr"] = _pyrepr
 
 
+PYDANTIC_RESERVED_FIELD_NAMES = {
+    "construct",
+    "copy",
+    "dict",
+    "from_orm",
+    "json",
+    "model_computed_fields",
+    "model_config",
+    "model_construct",
+    "model_copy",
+    "model_dump",
+    "model_dump_json",
+    "model_extra",
+    "model_fields",
+    "model_fields_set",
+    "model_json_schema",
+    "model_parametrized_name",
+    "model_post_init",
+    "model_rebuild",
+    "model_validate",
+    "model_validate_json",
+    "model_validate_strings",
+    "parse_file",
+    "parse_obj",
+    "parse_raw",
+    "schema",
+    "schema_json",
+    "update_forward_refs",
+    "validate",
+}
+
+
 @dataclass(frozen=True)
 class GenerationStats:
     server_count: int
@@ -50,6 +83,13 @@ class TypeSource:
     source: str
     type_expr: str
     is_model: bool = False
+
+
+@dataclass(frozen=True)
+class ToolExport:
+    function: str
+    input_type: str
+    output_type: str
 
 
 async def generate_async(
@@ -124,8 +164,11 @@ def generate_from_catalog(
     _write_client(client_path)
 
     manifest = {
-        "version": 1,
+        "version": 2,
+        "generator": "maco.codegen",
+        "generator_version": __version__ or "unknown",
         "config": str(config_path) if config_path is not None else None,
+        "config_hash": _file_hash(config_path) if config_path is not None else None,
         "package": package_name,
         "servers": [],
     }
@@ -140,7 +183,7 @@ def generate_from_catalog(
         server_dir.mkdir(parents=True, exist_ok=True)
         tool_module_names = _unique_sanitized_names(tool["name"] for tool in tools)
 
-        exports: list[str] = []
+        exports: list[ToolExport] = []
         server_manifest = {
             "name": server_name,
             "module": server_module,
@@ -150,14 +193,18 @@ def generate_from_catalog(
             tool_name = tool["name"]
             func_name = tool_module_names[tool_name]
             module_path = server_dir / f"{func_name}.py"
-            _write_tool(module_path, server_name, tool, func_name, client_module)
-            exports.append(func_name)
+            tool_export = _write_tool(module_path, server_name, tool, func_name, client_module)
+            exports.append(tool_export)
             server_manifest["tools"].append(
                 {
                     "name": tool_name,
                     "function": func_name,
                     "module": f"{package_name}.{server_module}.{func_name}",
                     "description": tool.get("description") or "",
+                    "input_type": tool_export.input_type,
+                    "output_type": tool_export.output_type,
+                    "input_schema_hash": _schema_hash(tool.get("inputSchema")),
+                    "output_schema_hash": _schema_hash(tool.get("outputSchema")),
                 }
             )
             tool_count += 1
@@ -292,7 +339,7 @@ def _write_tool(
     tool: dict[str, Any],
     func_name: str,
     client_module: str,
-) -> None:
+) -> ToolExport:
     tool_name = tool["name"]
     description = tool.get("description") or ""
     input_schema = tool.get("inputSchema") or {"type": "object", "properties": {}}
@@ -303,26 +350,30 @@ def _write_tool(
         output_schema,
         missing_type_expr="_t.Any",
     )
-    return_expr = _return_expr(output_type)
     _write_template(
         path,
         "codegen/tool.py.j2",
         description=description,
         docstring=_docstring(description, input_schema, output_schema),
         func_name=func_name,
-        input_is_model=input_type.is_model,
+        input_default_suffix=_input_default_suffix(input_schema),
         input_type_expr=input_type.type_expr,
         input_type_source=input_type.source,
         output_type_expr=output_type.type_expr,
         output_type_source=output_type.source,
-        return_expr=return_expr,
         client_module=client_module,
         server_name=server_name,
         tool_name=tool_name,
     )
 
+    return ToolExport(
+        function=func_name,
+        input_type=input_type.type_expr,
+        output_type=output_type.type_expr,
+    )
 
-def _write_server_init(path: Path, exports: list[str]) -> None:
+
+def _write_server_init(path: Path, exports: list[ToolExport]) -> None:
     _write_template(path, "codegen/server_init.py.j2", exports=exports)
 
 
@@ -355,10 +406,14 @@ def _schema_to_type(
 ) -> TypeSource:
     schema = _resolve_schema_ref(schema, root_schema)
 
+    all_of_schema = _merged_all_of_schema(schema, root_schema)
+    if all_of_schema is not None:
+        return _schema_to_type(type_name, all_of_schema, root_schema, used_names, define_named=define_named)
+
     if "const" in schema:
-        return _maybe_alias(type_name, _literal_type([schema["const"]]), used_names, define_named)
+        return _maybe_alias(type_name, _literal_type([schema["const"]]), used_names, define_named, schema=schema)
     if isinstance(schema.get("enum"), list) and schema["enum"]:
-        return _maybe_alias(type_name, _literal_type(schema["enum"]), used_names, define_named)
+        return _maybe_alias(type_name, _literal_type(schema["enum"]), used_names, define_named, schema=schema)
 
     for key in ("oneOf", "anyOf"):
         variants = schema.get(key)
@@ -385,10 +440,6 @@ def _schema_to_type(
                 define_named,
                 definitions,
             )
-
-    all_of = schema.get("allOf")
-    if isinstance(all_of, list) and len(all_of) == 1 and isinstance(all_of[0], dict):
-        return _schema_to_type(type_name, all_of[0], root_schema, used_names, define_named=define_named)
 
     schema_type = schema.get("type")
     if isinstance(schema_type, list):
@@ -424,16 +475,17 @@ def _schema_to_type(
                 used_names,
                 define_named,
                 [item_type.source],
+                schema=schema,
             )
-        return _maybe_alias(type_name, "list[_t.Any]", used_names, define_named)
+        return _maybe_alias(type_name, "list[_t.Any]", used_names, define_named, schema=schema)
     if schema_type == "string":
-        return _maybe_alias(type_name, "str", used_names, define_named)
+        return _maybe_alias(type_name, "str", used_names, define_named, schema=schema)
     if schema_type == "integer":
-        return _maybe_alias(type_name, "int", used_names, define_named)
+        return _maybe_alias(type_name, "int", used_names, define_named, schema=schema)
     if schema_type == "number":
-        return _maybe_alias(type_name, "float", used_names, define_named)
+        return _maybe_alias(type_name, "float", used_names, define_named, schema=schema)
     if schema_type == "boolean":
-        return _maybe_alias(type_name, "bool", used_names, define_named)
+        return _maybe_alias(type_name, "bool", used_names, define_named, schema=schema)
     if schema_type == "null":
         return _maybe_alias(type_name, "None", used_names, define_named)
     return _maybe_alias(type_name, "_t.Any", used_names, define_named)
@@ -448,7 +500,19 @@ def _object_type_source(
     define_named: bool,
 ) -> TypeSource:
     properties = schema.get("properties")
-    if isinstance(properties, dict) and properties:
+    additional = schema.get("additionalProperties")
+    if (not properties) and isinstance(additional, dict):
+        value_type = _schema_to_type(f"{type_name}Value", additional, root_schema, used_names)
+        return _maybe_alias(
+            type_name,
+            f"dict[str, {value_type.type_expr}]",
+            used_names,
+            define_named,
+            [value_type.source],
+            schema=schema,
+        )
+
+    if isinstance(properties, dict):
         reserved_name = _reserve_type_name(type_name, used_names)
         required = {field for field in schema.get("required", []) if isinstance(field, str)}
         definitions: list[str] = []
@@ -478,21 +542,62 @@ def _object_type_source(
                     "type_expr": type_expr,
                 }
             )
-        definitions.append(_render_source("codegen/model.py.j2", class_name=reserved_name, fields=fields))
+        definitions.append(
+            _render_source(
+                "codegen/model.py.j2",
+                class_name=reserved_name,
+                extra_behavior=_extra_behavior(schema),
+                fields=fields,
+            )
+        )
         return TypeSource(_join_definitions(definitions), reserved_name, is_model=True)
 
-    additional = schema.get("additionalProperties")
-    if isinstance(additional, dict):
-        value_type = _schema_to_type(f"{type_name}Value", additional, root_schema, used_names)
-        return _maybe_alias(
-            type_name,
-            f"dict[str, {value_type.type_expr}]",
-            used_names,
-            define_named,
-            [value_type.source],
-        )
-
     return _maybe_alias(type_name, "dict[str, _t.Any]", used_names, define_named)
+
+
+def _merged_all_of_schema(schema: dict[str, Any], root_schema: dict[str, Any]) -> dict[str, Any] | None:
+    all_of = schema.get("allOf")
+    if not isinstance(all_of, list) or not all_of:
+        return None
+
+    merged = {key: value for key, value in schema.items() if key != "allOf"}
+    properties: dict[str, Any] = dict(merged.get("properties") or {}) if isinstance(merged.get("properties"), dict) else {}
+    required: list[str] = [item for item in merged.get("required", []) if isinstance(item, str)]
+    additional_properties = merged.get("additionalProperties")
+
+    for item in all_of:
+        if not isinstance(item, dict):
+            return None
+        item_schema = _resolve_schema_ref(item, root_schema)
+        if not _is_object_schema(item_schema):
+            return item_schema if len(all_of) == 1 and not properties else None
+        item_properties = item_schema.get("properties")
+        if isinstance(item_properties, dict):
+            properties.update(item_properties)
+        for required_field in item_schema.get("required", []):
+            if isinstance(required_field, str) and required_field not in required:
+                required.append(required_field)
+        item_additional = item_schema.get("additionalProperties")
+        if item_additional is False:
+            additional_properties = False
+        elif additional_properties is None and item_additional is not None:
+            additional_properties = item_additional
+
+    merged["type"] = "object"
+    merged["properties"] = properties
+    if required:
+        merged["required"] = required
+    if additional_properties is not None:
+        merged["additionalProperties"] = additional_properties
+    return merged
+
+
+def _is_object_schema(schema: dict[str, Any]) -> bool:
+    return schema.get("type") == "object" or "properties" in schema
+
+
+def _extra_behavior(schema: dict[str, Any]) -> str:
+    return "forbid" if schema.get("additionalProperties") is False else "allow"
 
 
 def _resolve_schema_ref(schema: dict[str, Any], root_schema: dict[str, Any]) -> dict[str, Any]:
@@ -518,31 +623,19 @@ def _maybe_alias(
     used_names: set[str],
     define_named: bool,
     definitions: list[str] | None = None,
+    *,
+    schema: dict[str, Any] | None = None,
 ) -> TypeSource:
     definitions = definitions or []
     if not define_named:
         return TypeSource(_join_definitions(definitions), type_expr)
     reserved_name = _reserve_type_name(type_name, used_names)
-    if _is_root_model_expr(type_expr):
-        return TypeSource(
-            _join_definitions(
-                [
-                    *definitions,
-                    _render_source("codegen/root_model.py.j2", class_name=reserved_name, type_expr=type_expr),
-                ]
-            ),
-            reserved_name,
-            is_model=True,
-        )
+    type_expr = _annotated_type(type_expr, schema)
     return TypeSource(_join_definitions([*definitions, _render_type_alias(reserved_name, type_expr)]), reserved_name)
 
 
 def _render_type_alias(type_name: str, type_expr: str) -> str:
     return _render_source("codegen/type_alias.py.j2", type_name=type_name, type_expr=type_expr)
-
-
-def _is_root_model_expr(type_expr: str) -> bool:
-    return type_expr not in {"_t.Any", "None"} and not type_expr.startswith("dict[")
 
 
 def _field_default(prop_name: str, schema: dict[str, Any], required: set[str]) -> str:
@@ -561,26 +654,16 @@ def _field_args(prop_name: str, schema: dict[str, Any], default: str, field_name
     title = schema.get("title")
     if isinstance(title, str) and title:
         kwargs.append(f"title={title!r}")
-    for schema_key, field_key in (
-        ("minimum", "ge"),
-        ("maximum", "le"),
-        ("exclusiveMinimum", "gt"),
-        ("exclusiveMaximum", "lt"),
-        ("minLength", "min_length"),
-        ("maxLength", "max_length"),
-        ("pattern", "pattern"),
-    ):
-        if schema_key in schema:
-            kwargs.append(f"{field_key}={schema[schema_key]!r}")
+    kwargs.extend(_constraint_args(schema))
     return f"Field({', '.join(kwargs)})"
 
 
 def _safe_field_name(name: str, used_fields: set[str]) -> str:
-    candidate = re.sub(r"\W", "_", name)
-    if not candidate or candidate[0].isdigit():
+    candidate = _sanitize_identifier(name)
+    if candidate.startswith("_"):
+        candidate = f"field_{candidate.lstrip('_') or 'value'}"
+    if candidate in PYDANTIC_RESERVED_FIELD_NAMES:
         candidate = f"field_{candidate}"
-    if keyword.iskeyword(candidate):
-        candidate += "_"
     base = candidate
     index = 2
     while candidate in used_fields:
@@ -599,14 +682,6 @@ def _optional_type(type_expr: str) -> str:
 def _is_nullable(schema: dict[str, Any]) -> bool:
     schema_type = schema.get("type")
     return schema_type == "null" or (isinstance(schema_type, list) and "null" in schema_type)
-
-
-def _return_expr(output_type: TypeSource) -> str:
-    if output_type.type_expr == "_t.Any":
-        return "result"
-    if output_type.is_model:
-        return f"{output_type.type_expr}.model_validate(result)"
-    return f"_t.cast({output_type.type_expr}, result)"
 
 
 def _literal_type(values: list[Any]) -> str:
@@ -646,28 +721,99 @@ def _docstring(description: str, input_schema: dict[str, Any], output_schema: An
 
 
 def _unique_sanitized_names(names: Any) -> dict[str, str]:
-    originals = list(names)
-    base_names = [_sanitize_identifier(name) for name in originals]
-    counts: Counter[str] = Counter()
+    originals = [str(name) for name in names]
+    groups: dict[str, list[str]] = {}
+    for original in originals:
+        groups.setdefault(_sanitize_identifier(original), []).append(original)
     result: dict[str, str] = {}
-    for original, base in zip(originals, base_names, strict=True):
-        counts[base] += 1
-        result[original] = base if counts[base] == 1 else f"{base}_{counts[base]}"
+    for base, group in groups.items():
+        if len(group) == 1:
+            result[group[0]] = base
+            continue
+        for index, original in enumerate(sorted(group), start=1):
+            result[original] = base if index == 1 else f"{base}_{index}"
     return result
 
 
 def _sanitize_identifier(name: str) -> str:
-    words = [part for part in re.split(r"[^0-9A-Za-z]+", name.strip()) if part]
+    words = [word for part in re.split(r"[^0-9A-Za-z]+", name.strip()) for word in _identifier_words(part)]
     if not words:
         result = "tool"
     else:
-        result = words[0].lower() + "".join(part[:1].upper() + part[1:] for part in words[1:])
+        result = "_".join(part.lower() for part in words)
     result = re.sub(r"\W", "_", result)
     if result[0].isdigit():
         result = f"_{result}"
     if keyword.iskeyword(result):
         result += "_"
     return result
+
+
+def _identifier_words(part: str) -> list[str]:
+    return re.findall(r"[A-Z]+(?=[A-Z][a-z]|\d|$)|[A-Z]?[a-z]+|\d+", part)
+
+
+def _input_default_suffix(schema: Any) -> str:
+    if not isinstance(schema, dict):
+        return " = None"
+    schema = _resolve_schema_ref(schema, schema)
+    if not _is_object_schema(schema):
+        return ""
+    required = schema.get("required")
+    if isinstance(required, list) and any(isinstance(item, str) for item in required):
+        return ""
+    return " | None = None"
+
+
+def _annotated_type(type_expr: str, schema: dict[str, Any] | None) -> str:
+    if schema is None:
+        return type_expr
+    constraints = _constraint_args(schema)
+    if not constraints:
+        return type_expr
+    return f"_t.Annotated[{type_expr}, Field({', '.join(constraints)})]"
+
+
+def _constraint_args(schema: dict[str, Any]) -> list[str]:
+    args: list[str] = []
+    for schema_key, field_key in (
+        ("minimum", "ge"),
+        ("maximum", "le"),
+        ("exclusiveMinimum", "gt"),
+        ("exclusiveMaximum", "lt"),
+        ("multipleOf", "multiple_of"),
+        ("minLength", "min_length"),
+        ("maxLength", "max_length"),
+        ("minItems", "min_length"),
+        ("maxItems", "max_length"),
+        ("minProperties", "min_length"),
+        ("maxProperties", "max_length"),
+        ("pattern", "pattern"),
+    ):
+        if schema_key in schema:
+            args.append(f"{field_key}={schema[schema_key]!r}")
+
+    json_schema_extra = {key: schema[key] for key in ("format", "uniqueItems") if key in schema}
+    if json_schema_extra:
+        args.append(f"json_schema_extra={json_schema_extra!r}")
+    return args
+
+
+def _schema_hash(schema: Any) -> str | None:
+    if schema is None:
+        return None
+    encoded = json.dumps(schema, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _file_hash(path: str | Path | None) -> str | None:
+    if path is None:
+        return None
+    try:
+        data = Path(path).expanduser().read_bytes()
+    except OSError:
+        return None
+    return hashlib.sha256(data).hexdigest()
 
 
 def _class_name(func_name: str) -> str:

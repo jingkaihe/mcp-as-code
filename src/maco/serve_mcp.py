@@ -184,7 +184,7 @@ def serve_mcp(options: ServeMcpOptions) -> None:
         gateway = GatewayInfo(url=gateway_server.url, token=gateway_server.token)
         tools_by_server = fetch_gateway_tools(gateway.url, token=gateway.token)
         modules = sorted(server_module_names(tools_by_server.keys()).values())
-        if options.provider.replace("_", "-").lower() == "local":
+        if normalized_provider == "local":
             _clean_local_sdk(workspace, clean=options.clean)
             stats = generate_sandbox_sdk(tools_by_server, workspace=workspace, clean=False)
             print(_LOCAL_SDK_GENERATED_TEMPLATE.render(stats=stats).strip())

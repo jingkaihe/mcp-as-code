@@ -72,11 +72,12 @@ def test_matchlock_provider_executes_with_gateway_and_generated_workspace(tmp_pa
 
 def _run_smoke(provider: LocalSandboxProvider | DockerSandboxProvider | MatchlockSandboxProvider):
     script = r'''
+import asyncio
 import json
 import os
 import urllib.request
 
-from tools.echoServer import echo
+from tools.echo_server import EchoInput, echo
 
 request = urllib.request.Request(
     os.environ["MACO_GATEWAY_URL"] + "health",
@@ -85,13 +86,17 @@ request = urllib.request.Request(
 with urllib.request.urlopen(request, timeout=5) as response:
     health = json.loads(response.read().decode("utf-8"))
 
-print(json.dumps({
-    "gateway_url": os.environ["MACO_GATEWAY_URL"],
-    "identity": f"{os.getuid()}:{os.getgid()}",
-    "workspace": os.environ["MACO_WORKSPACE"],
-    "tool_result": echo(message="sandbox-smoke").result,
-    "health": health,
-}, sort_keys=True))
+async def main():
+    tool_result = await echo(EchoInput(message="sandbox-smoke"))
+    print(json.dumps({
+        "gateway_url": os.environ["MACO_GATEWAY_URL"],
+        "identity": f"{os.getuid()}:{os.getgid()}",
+        "workspace": os.environ["MACO_WORKSPACE"],
+        "tool_result": tool_result.result,
+        "health": health,
+    }, sort_keys=True))
+
+asyncio.run(main())
 '''
     return provider.run(SandboxExec(command=f"python - <<'PY'\n{script}\nPY", timeout=90))
 

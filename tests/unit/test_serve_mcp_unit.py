@@ -89,8 +89,8 @@ def test_serve_mcp_identity_route_returns_detached_identity(tmp_path):
 def test_serve_mcp_instructions_list_server_modules_and_rg_fd_discovery(tmp_path):
     context = _context(tmp_path)
     provider = RecordingProvider()
-    (context.workspace / "tools" / "echoServer").mkdir(parents=True)
-    (context.workspace / "tools" / "echoServer" / "__init__.py").write_text(
+    (context.workspace / "tools" / "echo_server").mkdir(parents=True)
+    (context.workspace / "tools" / "echo_server" / "__init__.py").write_text(
         "from .echo import echo\n",
         encoding="utf-8",
     )
@@ -98,7 +98,7 @@ def test_serve_mcp_instructions_list_server_modules_and_rg_fd_discovery(tmp_path
     instructions = _mcp_instructions(provider, context)
 
     assert "Available generated server modules:" in instructions
-    assert "- echoServer: /workspace/macosdk/tools/echoServer" in instructions
+    assert "- echo_server: /workspace/macosdk/tools/echo_server" in instructions
     assert "rg --files /workspace/macosdk/tools" in instructions
     assert "fd . /workspace/macosdk/tools -t f" in instructions
     assert "rg \"^def \" /workspace/macosdk/tools/<server>" in instructions
@@ -132,7 +132,7 @@ def test_code_execute_description_lists_server_modules(tmp_path):
 
     description = _code_execute_description(provider, context)
 
-    assert "from tools.<server> import <tool>" in description
+    assert "from tools.<server> import <ToolInput>, <tool>" in description
     assert "For most tasks, pass only the code argument" in description
     assert "<hash>.py" in description
     assert "- github: /workspace/macosdk/tools/github" in description

@@ -92,22 +92,32 @@ def test_serve_mcp_providers_call_real_backend_with_generated_client(tmp_path, p
 
 async def _call_wrapper_tool_values(mcp_url: str) -> dict[str, dict[str, Any]]:
     bash_script = r'''
+import asyncio
 import json
-from tools.echoServer import add, echo
+from tools.echo_server import AddInput, EchoInput, add, echo
 
-message = echo(message="bash-wrapper")
-total = add(a=20, b=22)
-echo = message.result
-total = total.result
-print(json.dumps({"echo": echo, "total": total}, sort_keys=True))
+async def main():
+    message, total = await asyncio.gather(
+        echo(EchoInput(message="bash-wrapper")),
+        add(AddInput(a=20, b=22)),
+    )
+    print(json.dumps({"echo": message.result, "total": total.result}, sort_keys=True))
+
+asyncio.run(main())
 '''
     code = r'''
+import asyncio
 import json
-from tools.echoServer import add, echo
+from tools.echo_server import AddInput, EchoInput, add, echo
 
-message = echo(message="code-wrapper")
-total = add(a=6, b=7)
-print(json.dumps({"echo": message.result, "total": total.result}, sort_keys=True))
+async def main():
+    message, total = await asyncio.gather(
+        echo(EchoInput(message="code-wrapper")),
+        add(AddInput(a=6, b=7)),
+    )
+    print(json.dumps({"echo": message.result, "total": total.result}, sort_keys=True))
+
+asyncio.run(main())
 '''
     return await _call_bash_and_code_execute(
         mcp_url,
@@ -119,25 +129,37 @@ print(json.dumps({"echo": message.result, "total": total.result}, sort_keys=True
 
 async def _call_generated_client_tool_values(mcp_url: str, provider: str) -> dict[str, dict[str, Any]]:
     bash_script = f'''
+import asyncio
 import json
-from tools.echoServer import add, echo
+from tools.echo_server import AddInput, EchoInput, add, echo
 
-echo = echo(message="bash-client:{provider}").result
-total = add(a=11, b=23).result
-print(json.dumps({{"echo": echo, "total": total}}, sort_keys=True))
+async def main():
+    message, total = await asyncio.gather(
+        echo(EchoInput(message="bash-client:{provider}")),
+        add(AddInput(a=11, b=23)),
+    )
+    print(json.dumps({{"echo": message.result, "total": total.result}}, sort_keys=True))
+
+asyncio.run(main())
 '''
     code = r'''
 import argparse
+import asyncio
 import json
-from tools.echoServer import add, echo
+from tools.echo_server import AddInput, EchoInput, add, echo
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--label", required=True)
 args = parser.parse_args()
 
-echo = echo(message=f"code-client:{args.label}").result
-total = add(a=50, b=6).result
-print(json.dumps({"echo": echo, "total": total}, sort_keys=True))
+async def main():
+    message, total = await asyncio.gather(
+        echo(EchoInput(message=f"code-client:{args.label}")),
+        add(AddInput(a=50, b=6)),
+    )
+    print(json.dumps({"echo": message.result, "total": total.result}, sort_keys=True))
+
+asyncio.run(main())
 '''
     return await _call_bash_and_code_execute(
         mcp_url,

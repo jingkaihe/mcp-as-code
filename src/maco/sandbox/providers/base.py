@@ -63,7 +63,6 @@ class BaseSandboxProvider:
             raise SandboxError("path must be relative and inside the sandbox scratch directory")
         return relative
 
-
 class RemoteSandboxProvider(BaseSandboxProvider):
     guest_workspace = SANDBOX_SDK_ROOT
     guest_scratch = "/workspace"
