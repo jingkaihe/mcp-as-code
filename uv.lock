@@ -371,11 +371,11 @@ wheels = [
 
 [[package]]
 name = "matchlock"
-version = "0.2.15"
+version = "0.2.16"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/2e/f0/5108e3d335df6102ac25e10194546ae5b8ac8bb8d2177139104b4d66526b/matchlock-0.2.15.tar.gz", hash = "sha256:320cd5007bdaf7a1ff4bfdc12a739f4da860a73810f8c654726d5884392a5d69", size = 35536, upload-time = "2026-06-13T23:11:23.44Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/7c/1a/b85f85802ac8b586c4542da213c892488e84260c42c0da2f1cd3d52f500e/matchlock-0.2.16.tar.gz", hash = "sha256:a6e9b176a4380dd4bf6d1f024a07db485ca8ffec24f372f437e1968e1af4397f", size = 35535, upload-time = "2026-06-28T17:48:01.388Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ec/ac/5ba4fc19078826fb19818b002b6a3c2fff59487d74209bc99a4f773e8576/matchlock-0.2.15-py3-none-any.whl", hash = "sha256:1e747fccc8ea428db0161fc2c14a58d27dc10add6e911584001c6d7f4037b5cf", size = 24238, upload-time = "2026-06-13T23:11:22.215Z" },
+    { url = "https://files.pythonhosted.org/packages/3e/08/8c39aa0c59f67cfd7ff5ee160ec9aed1c6142d64fa777bafb045a805cf69/matchlock-0.2.16-py3-none-any.whl", hash = "sha256:be38a5961588037b924e0f6174192885e452b043fc45ca92594c2eb4d45ca5c7", size = 24236, upload-time = "2026-06-28T17:48:00.235Z" },
 ]
 
 [[package]]
@@ -410,9 +410,13 @@ dependencies = [
     { name = "click" },
     { name = "httpx" },
     { name = "jinja2" },
-    { name = "matchlock" },
     { name = "mcp" },
     { name = "pydantic" },
+]
+
+[package.optional-dependencies]
+matchlock = [
+    { name = "matchlock" },
 ]
 
 [package.dev-dependencies]
@@ -427,10 +431,11 @@ requires-dist = [
     { name = "click", specifier = ">=8.1" },
     { name = "httpx", specifier = ">=0.28" },
     { name = "jinja2", specifier = ">=3.1" },
-    { name = "matchlock", specifier = "==0.2.15" },
+    { name = "matchlock", marker = "extra == 'matchlock'", specifier = ">=0.2.15,<0.3.0" },
     { name = "mcp", specifier = ">=1.24.0" },
     { name = "pydantic", specifier = ">=2.0" },
 ]
+provides-extras = ["matchlock"]
 
 [package.metadata.requires-dev]
 dev = [

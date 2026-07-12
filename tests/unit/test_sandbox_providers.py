@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import subprocess
+import sys
 from typing import Any
 
 import pytest
@@ -243,6 +244,13 @@ def test_provider_factory_allows_explicit_image_when_default_version_is_unknown(
 
     with pytest.raises(SandboxError, match="missing version"):
         sandbox_core.provider_from_name("docker", context)
+
+
+def test_matchlock_provider_explains_optional_dependency(monkeypatch):
+    monkeypatch.setitem(sys.modules, "matchlock", None)
+
+    with pytest.raises(SandboxError, match=r"mcp-as-code\[matchlock\]"):
+        matchlock_provider._load_matchlock_sdk()
 
 
 def test_matchlock_provider_uses_sdk_builder_without_leaking_token(tmp_path, monkeypatch, capsys):

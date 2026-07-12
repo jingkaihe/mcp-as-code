@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from importlib.util import find_spec
 import json
 from pathlib import Path
 import shutil
@@ -272,6 +273,8 @@ def _docker_gateway_ip() -> str | None:
 
 
 def _require_matchlock() -> None:
+    if find_spec("matchlock") is None:
+        pytest.skip("Matchlock Python SDK not installed; install mcp-as-code[matchlock]")
     if shutil.which("matchlock") is None:
         pytest.skip("matchlock binary not available")
     result = subprocess.run(

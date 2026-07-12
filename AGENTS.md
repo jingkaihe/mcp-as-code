@@ -12,6 +12,7 @@ make build             # Build Python sdist/wheel
 make clean-sandboxes   # Remove managed Docker containers and maco Matchlock sandboxes after interrupted runs
 make image             # Build sandbox image using maco.__version__
 make image-import      # Build and import sandbox image into Matchlock
+uv sync --all-groups --extra matchlock  # Include optional Matchlock SDK support
 uv run maco --help
 ```
 

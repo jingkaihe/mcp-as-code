@@ -11,7 +11,7 @@ This example shows how to expose several upstream MCP servers through one compac
 - `node`/`npx`, for Playwright MCP
 - A GitHub personal access token in `GITHUB_TOKEN`, used by the hosted GitHub MCP server
 - Docker, only if you use the Docker sandbox provider
-- Optional: Matchlock, for the Matchlock sandbox provider
+- Optional: `mcp-as-code[matchlock]` and the Matchlock binary, for the Matchlock sandbox provider
 
 If you are already authenticated with the GitHub CLI, export a token directly:
 

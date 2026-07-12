@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from importlib import import_module
 import shlex
 import sys
 from typing import Any
@@ -215,10 +216,10 @@ def _replace_url_host(url: str, host: str) -> str:
 
 def _load_matchlock_sdk() -> tuple[type[Any], type[Any], type[Any]]:
     try:
-        from matchlock import Client, Config, Sandbox
+        matchlock = import_module("matchlock")
     except ImportError as exc:  # pragma: no cover - depends on optional package availability
         raise SandboxError(
             "matchlock provider requires the Matchlock Python SDK; "
-            "install `maco-sandbox[matchlock]` or `matchlock`"
+            "install `mcp-as-code[matchlock]`"
         ) from exc
-    return Client, Config, Sandbox
+    return matchlock.Client, matchlock.Config, matchlock.Sandbox

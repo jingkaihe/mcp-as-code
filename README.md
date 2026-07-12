@@ -65,6 +65,14 @@ Install the Python package `mcp-as-code`; it provides the `maco` executable:
 uv tool install mcp-as-code
 ```
 
+To use the Matchlock sandbox provider, install the optional Matchlock support instead:
+
+```bash
+uv tool install 'mcp-as-code[matchlock]'
+```
+
+The Matchlock binary must also be installed and available on `PATH`.
+
 Then verify the CLI:
 
 ```bash
@@ -134,7 +142,7 @@ Choose the execution provider with `--provider`:
 
 - `local`: ideally for local development and fast feedback loop, or maco is already running in an isolated sandbox.
 - `docker`: runs mcp bash and code execution in a long-lived Docker container.
-- `matchlock`: runs mcp bash and code execution in a long-lived Matchlock micro-VM.
+- `matchlock`: runs mcp bash and code execution in a long-lived Matchlock micro-VM; requires `mcp-as-code[matchlock]` and the Matchlock binary.
 
 ## Credits
 

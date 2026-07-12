@@ -30,6 +30,8 @@ Defaults:
 - Sandbox SDK: `/workspace/macosdk/tools`
 - Sandbox providers: `local`, `docker`, `matchlock`
 
+The `matchlock` provider requires the optional `mcp-as-code[matchlock]` extra and the Matchlock binary on `PATH`.
+
 ## Client/agent workflow
 
 When connected to a `maco up` endpoint, do not try to enumerate every upstream MCP schema. Work progressively:

@@ -283,11 +283,13 @@ def _serve_mcp(
 ) -> Iterator[str]:
     port = _free_port()
     scratch = tmp_path / f"scratch-{provider}"
+    matchlock_options = ["--isolated", "--extra", "matchlock"] if provider == "matchlock" else []
     command = [
         "uv",
         "run",
         "--project",
         str(repo),
+        *matchlock_options,
         "maco",
         "up",
         "--config",
